@@ -1,6 +1,6 @@
 package WWW::Yandex::Catalog::LookupSite;
 
-# Last updated July 11, 2012
+# Last updated July 16, 2012
 #
 # Author:       Irakliy Sunguryan ( www.sochi-travel.info )
 # Date Created: January 30, 2010
@@ -9,7 +9,7 @@ use strict;
 use warnings;
 
 use vars qw($VERSION);
-$VERSION    = '0.07';
+$VERSION    = '0.09';
 
 use LWP::Simple;
 
@@ -184,6 +184,10 @@ I<Not> every website in the Yandex Catalog has I<long description>.
 
 Every website in the Yandex Catalog will belong to at least one I<category>. It may belong to several other categories as well.
 
+Yandex Catalog may know the website by different I<uri>.
+
+We also know the I<order number> (position) of the site in the main catogory where it is listed.
+
 
 =head1 CONSTRUCTOR
 
@@ -200,32 +204,43 @@ Creates and returns a new C<WWW::Yandex::Catalog::LookupSite> object.
 
 Given a URL/URI, strips unnessesary data from it (scheme, authentication, port, and query), fetches Yandex Catalog with it, and parses results for data.
 
-Returns an array ref to: C<[ tIC, short description, long description, [catalogs] ]>.
+Returns an array ref to: C<[ tIC, short description, long description, [ catalogs ], uri, ordinal number ]>.
 Returns C<undef> if couldn't fetch the URI.
 
 Short and long description are returned as provided by Yandex, in UTF8 encoding.
 
-Catalogs is an array of strings in format similar to "C<Auto & Moto / Motorcycles / Yamaha>". The leading "C<Catalog / >" is striped, I don't believe there're any sites in root of the catalog.
+Catalogs is an array of strings in format similar to "C<Auto & Moto / Motorcycles / Yamaha>". The leading "C<Catalog / >" is striped, I don't believe there're any sites in root of the Catalog.
+
+C<uri> is returned as stored in the Catalog, which can be defferent from the input URI. For example, with/without C<www> prefix, or even completely different address (C<www.narod.ru -E<gt> narod.yandex.ru>).
+
+The listing number in the main catogory. Note, that only order in the main catogory is available. For any additional categories this information is currently not provided.
 
 =over 1
 
 =item B<tIC>
 
 C<undef> - if there was an error getting or parsing data.
-C<0> - (a) when site is not present in catalog and tIC is < 10. (b) when site is present in catalog, but the catalog reports it as zero (payed submission).
-Numeric string when tIC is 10 or greater.
+Numeric string with tIC value otherwise. This value (zero or greater, with 10 points step) is always returned. tIC value of zero indicates that eihter site's tIC value is really very low (under 10), or that such site does not exist.
 
 =item B<Short Description>
 
-Returned only when site is present in catalog (in UTF8 encoding); C<undef> otherwise.
+Returned only when site is present in the Catalog (in UTF8 encoding); C<undef> otherwise.
 
 =item B<Long Description>
 
-Can be C<undef> when site is present in catalog -- not all sites in the catalog have long description. Returned in UTF8 encoding.
+Can be C<undef> when site is present in the Catalog -- not all sites in the catalog have long description. Returned in UTF8 encoding.
 
 =item B<Categories>
 
-Empty list is returned when site is not present in catalog. At least one entry when present in catalog.
+Empty list is returned when site is not present in Catalog. At least one entry when present in the catalog.
+
+=item B<URI>
+
+Address as stored in the Catalog (see notes above).
+
+=item B<Ordinal number>
+
+Returned only when site is present in catalog; C<undef> otherwise.
 
 =back
 
@@ -262,21 +277,32 @@ Self explanatory. This comment is here to shut the podchecker up.
         print "$_\n" foreach @{$site->categories};
     }
 
+=head2 $site-E<gt>uri
+
+=for comment
+Self explanatory. This comment is here to shut the podchecker up.
+
+=head2 $site-E<gt>order_number
+
+=for comment
+Self explanatory. This comment is here to shut the podchecker up.
+
 
 =head1 AUTHOR
 
-Irakliy Sunguryan, C<< <webmaster at slovnik.org> >>, L<http://www.slovnik.org/>
+Irakliy Sunguryan, L<http://www.slovnik.org/>
 
 
-=head1 BUGS
+=head1 DEVELOPMENT & BUGS
 
-Please report any to C<bug-www-yandex-catalog-lookupsite at rt.cpan.org>, or through 
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=WWW-Yandex-Catalog-LookupSite>.
+Repository: L<https://github.com/OpossumPetya/WWW-Yandex-Catalog-LookupSite>.
+
+Please report any bugs at L<GitHub|https://github.com/OpossumPetya/WWW-Yandex-Catalog-LookupSite/issues>, L<RT|http://rt.cpan.org/NoAuth/ReportBug.html?Queue=WWW-Yandex-Catalog-LookupSite>, or via email C<bug-www-yandex-catalog-lookupsite at rt.cpan.org>.
 
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2010 Irakliy Sunguryan.
+Copyright 2010-2012 Irakliy Sunguryan.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published

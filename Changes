@@ -1,5 +1,11 @@
 Revision history for WWW-Yandex-Catalog-LookupSite
 
+0.09    July 16, 2012
+        Documentation update.
+        No code changes.
+0.08    July 12, 2012
+        Added uri() and order_num() to POD so tests do not fail.
+        These will be described in the next version.
 0.07    July 12, 2012
         Fixes so it works with new Yandex.Catalog layout.
 0.06    June 28, 2010
