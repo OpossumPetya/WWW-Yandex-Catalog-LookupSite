@@ -12,8 +12,9 @@ WriteMakefile(
       : ()),
     PL_FILES            => {},
     PREREQ_PM => {
-        'Test::More'    => 0,
-        'LWP::Simple'   => 0,
+        'Test::More'          => 0,
+        'LWP::UserAgent'      => 0,
+        # 'URI::UTF8::Punycode' => 0, # not required, but used when installed
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean               => { FILES => 'WWW-Yandex-Catalog-LookupSite-*' },

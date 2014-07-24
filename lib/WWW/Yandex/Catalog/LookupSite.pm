@@ -1,6 +1,6 @@
 package WWW::Yandex::Catalog::LookupSite;
 
-# Last updated July 16, 2012
+# Last updated July 24, 2014
 #
 # Author:       Irakliy Sunguryan ( www.sochi-travel.info )
 # Date Created: January 30, 2010
@@ -9,12 +9,18 @@ use strict;
 use warnings;
 
 use vars qw($VERSION);
-$VERSION    = '0.09';
+$VERSION    = '0.10';
 
-use LWP::Simple;
+use LWP::UserAgent;
+
+my $HAS_PUNYMOD;
+BEGIN { $HAS_PUNYMOD = eval 'use URI::UTF8::Punycode; 1;'; }
+
 
 sub new {
     my $class = shift;
+    my %options = @_;
+
     my $self = {
         _tic        => undef,
             # undef - if there was an error getting or parsing data
@@ -32,18 +38,31 @@ sub new {
         _orderNum   => undef,
             # order number in the sub-category of catalog; "main" subcategory,
             # when there are more than one.
-            # defined only when site is present in catalog; undef otherwise
+            # defined only when site is present in the catalog; undef otherwise
         _uri        => undef,
             # URI as it is recorded in catalog. for example with/without 'www' prefix
             # or it can be recorded with totally different address (narod.ru -> narod.yandex.ru)
             # defined only when site is present in catalog; undef otherwise
     };
+    
+    # first get module's options...
+    $self->{puny2uni} = exists $options{puny2uni} ? delete $options{puny2uni} : 1;   # default value is 1
+    warn 'This option requires URI::UTF8::Punycode module.' 
+        if $self->{puny2uni} and !$HAS_PUNYMOD;
+
+    $self->{ua} = LWP::UserAgent->new( agent => __PACKAGE__ . "/" . $VERSION );
+
+    # ...the rest are LWP::UserAgent options
+    foreach my $option ( keys %options ) {
+        $self->{ua}->$option( $options{$option} );
+    }
+    
     bless $self, $class;
     return $self;
 }
 
 
-# returns [ tIC, short description, long description, [catalogs] ]
+# Returns [ tIC, short description, long description, [list of catalogs], URI as returned by Yaca, order number in the main category ]
 # "yaca" - Yandex Catalog
 sub yaca_lookup {
     my $self = shift;
@@ -54,7 +73,7 @@ sub yaca_lookup {
     # scheme, authentication, port, and query strings are stripped --
     #   assuming Yandex won't accept URIs that contain all this
 
-    $self->{_tic} = $self->{_shortDescr} = $self->{_longDescr} = undef;
+    $self->{_tic} = $self->{_shortDescr} = $self->{_longDescr} = $self->{_orderNum} = $self->{_uri} = undef;
     $self->{_categories} = [];
 
     $address =~ s|.*?://||;       # loose scheme
@@ -63,10 +82,11 @@ sub yaca_lookup {
     $address =~ s|\?.*||;         # loose query
     $address =~ s|/$||;           # loose trailing slash
 
-    my $contents = get( 'http://search.yaca.yandex.ru/yca/cy/ch/' . $address );
-
-    return unless defined $contents;
-
+    my $resp = $self->{ua}->get( 'http://yaca.yandex.ru/yca/cy/ch/' . $address . '/' );
+    return unless $resp->is_success;
+    
+    my $contents = $resp->decoded_content;
+    
     if( $contents =~ /<p class="b-cy_error-cy">/ ) {
         # "ресурс не описан в Яндекс.Каталоге"
         # It's not in the catalog, but tIC is always displayed.
@@ -81,12 +101,14 @@ sub yaca_lookup {
             #                  $1                       $2        $3            $4             $5
             $entry =~ qr{<td>(\d+)\.\s*</td>.*<a href="(.*?)".*?>(.*)</a>(<div>(.*)</div>.*?)?(\d+)<}s;
 
+        $self->{_uri} = $self->process_idn( $self->{_uri} );
+        
         # main catalog
         my( $path, $rubric ) = $contents =~ qr{<div class="b-path">(.*?)</div>\s*<h1.*?><a.*?>(.*?)</a>}s;
         if( $path ) {
             $path =~ s{</?a.*?>|</?h1>|\n}{}gs; # remove A, H1 tags and newline
             $path =~ s|\x{0420}\x{0443}\x{0431}\x{0440}\x{0438}\x{043A}\x{0438} / ||;
-                # removed "Рубрики" - it always starts with it
+                # removed "Рубрики" - it always starts with this root word
                 # http://www.rishida.net/tools/conversion/
             push( @{$self->{_categories}}, $path.' / '.$rubric ) if $entry;
         }
@@ -106,6 +128,27 @@ sub yaca_lookup {
     return [ $self->{_tic}, $self->{_shortDescr}, $self->{_longDescr}, $self->{_categories}, $self->{_uri}, $self->{_orderNum} ];
 }
 
+# Converts punycode in a URL to utf8, if required by options.
+# Returns converted URL. Or original if conversion module is not installed.
+sub process_idn {
+    my( $self, $uri ) = @_;
+    
+    # return what we got if puny2uni was not requested, or module is not installed
+    return $uri unless $self->{puny2uni} and $HAS_PUNYMOD;
+    
+    s/^\s+//, s/\s+$// for $uri; # trim $uri just in case
+    my( $schema, $domain, $path ) = $uri =~ m{(http.*?//)(.*?)(($|/|:).*)};
+        # Ex.: http://www.domain.com:80/path?quary#anchor -> 'http://' , 'www.domain.com' , ':80/path?quary#anchor'
+        # I hope there are no urls with username/password links in YaCa
+        # I hope there are no non-http(s) links in YaCa
+        # I hope all links include schema part
+        # Anyway, from awhat I've seen so far we should be Ok.
+    
+    $domain = join( '.', map { /^xn--/ ? puny_dec($_) : $_ } split(/\./, $domain) );
+        # split by dot -> convert only punycode parts -> glue 'em back together
+
+    return $schema.$domain.$path;
+}
 
 # == Convenience functions =================================
 
