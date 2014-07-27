@@ -1,6 +1,6 @@
 package WWW::Yandex::Catalog::LookupSite;
 
-# Last updated July 24, 2014
+# Last updated July 27, 2014
 #
 # Author:       Irakliy Sunguryan ( www.sochi-travel.info )
 # Date Created: January 30, 2010
@@ -45,14 +45,9 @@ sub new {
             # defined only when site is present in catalog; undef otherwise
     };
     
-    # first get module's options...
-    $self->{puny2uni} = exists $options{puny2uni} ? delete $options{puny2uni} : 1;   # default value is 1
-    warn 'This option requires URI::UTF8::Punycode module.' 
-        if $self->{puny2uni} and !$HAS_PUNYMOD;
-
     $self->{ua} = LWP::UserAgent->new( agent => __PACKAGE__ . "/" . $VERSION );
 
-    # ...the rest are LWP::UserAgent options
+    # Pass options on to LWP::UserAgent
     foreach my $option ( keys %options ) {
         $self->{ua}->$option( $options{$option} );
     }
@@ -101,8 +96,6 @@ sub yaca_lookup {
             #                  $1                       $2        $3            $4             $5
             $entry =~ qr{<td>(\d+)\.\s*</td>.*<a href="(.*?)".*?>(.*)</a>(<div>(.*)</div>.*?)?(\d+)<}s;
 
-        $self->{_uri} = $self->process_idn( $self->{_uri} );
-        
         # main catalog
         my( $path, $rubric ) = $contents =~ qr{<div class="b-path">(.*?)</div>\s*<h1.*?><a.*?>(.*?)</a>}s;
         if( $path ) {
@@ -128,21 +121,18 @@ sub yaca_lookup {
     return [ $self->{_tic}, $self->{_shortDescr}, $self->{_longDescr}, $self->{_categories}, $self->{_uri}, $self->{_orderNum} ];
 }
 
-# Converts punycode in a URL to utf8, if required by options.
-# Returns converted URL. Or original if conversion module is not installed.
-sub process_idn {
-    my( $self, $uri ) = @_;
-    
-    # return what we got if puny2uni was not requested, or module is not installed
-    return $uri unless $self->{puny2uni} and $HAS_PUNYMOD;
+# Converts punycode in a IDN URL to utf8.
+# Returns converted URL.
+sub punycode_utf8 {
+    my $uri = shift;
     
     s/^\s+//, s/\s+$// for $uri; # trim $uri just in case
     my( $schema, $domain, $path ) = $uri =~ m{(http.*?//)(.*?)(($|/|:).*)};
-        # Ex.: http://www.domain.com:80/path?quary#anchor -> 'http://' , 'www.domain.com' , ':80/path?quary#anchor'
+        # Ex.: http://www.domain.com:80/path?query#anchor -> 'http://' , 'www.domain.com' , ':80/path?query#anchor'
         # I hope there are no urls with username/password links in YaCa
         # I hope there are no non-http(s) links in YaCa
         # I hope all links include schema part
-        # Anyway, from awhat I've seen so far we should be Ok.
+        # Anyway, from what I've seen in YaCa so far we should be Ok
     
     $domain = join( '.', map { /^xn--/ ? puny_dec($_) : $_ } split(/\./, $domain) );
         # split by dot -> convert only punycode parts -> glue 'em back together
@@ -187,6 +177,11 @@ sub uri {
     return $self->{_uri};
 }
 
+sub uri_utf8 {
+    my $self = shift;
+    return $HAS_PUNYMOD ? punycode_utf8( $self->{_uri} ) : $self->{_uri};
+}
+
 1;
 
 __END__
@@ -195,7 +190,7 @@ __END__
 
 =head1 NAME
 
-WWW::Yandex::Catalog::LookupSite - Query Yandex Catalog for a website's presence, it's Index of Citing, descriptions in the catalog, and the list of categories it belongs to.
+WWW::Yandex::Catalog::LookupSite - Query Yandex Catalog for a website's presence, its Index of Citing, descriptions, and the list of categories it belongs to.
 
 =head1 SYNOPSIS
 
@@ -208,14 +203,14 @@ WWW::Yandex::Catalog::LookupSite - Query Yandex Catalog for a website's presence
     print $site->tic . "\n";
     print $site->short_description . "\n";
     print $site->long_description . "\n";
-    print "$_\n" foreach @{$site->categories};
+    print shift @{$site->categories};
 
 
 =head1 DESCRIPTION
 
 The C<WWW::Yandex::Catalog::LookupSite> module retrieves website's Thematic Index of Citing, and checks website's presence in Yandex Catalog, retrieves it's descriptions as recorded in the catalog, and the list of categories it belongs to.
 
-This module uses C<LWP::Simple> for making requests to Yandex Catalog.
+This module uses C<LWP::UserAgent> for making requests to Yandex Catalog.
 
 =head2 Data retrieved
 
@@ -238,7 +233,15 @@ We also know the I<order number> (position) of the site in the main catogory whe
 
 Creates and returns a new C<WWW::Yandex::Catalog::LookupSite> object.
 
+All options are passed on to C<LWP::UserAgent> (please see documentation for this module).
+
     my $site = WWW::Yandex::Catalog::LookupSite->new();
+    
+    my $site = WWW::Yandex::Catalog::LookupSite->new(
+        agent       => 'Mozilla/5.0 (Windows NT 6.0; rv:30.0) Gecko/20100101 Firefox/30.0',
+        cookie_jar  => {},
+    );
+   
 
 
 =head1 DATA-FETCHING METHODS
@@ -247,23 +250,17 @@ Creates and returns a new C<WWW::Yandex::Catalog::LookupSite> object.
 
 Given a URL/URI, strips unnessesary data from it (scheme, authentication, port, and query), fetches Yandex Catalog with it, and parses results for data.
 
-Returns an array ref to: C<[ tIC, short description, long description, [ catalogs ], uri, ordinal number ]>.
+Returns an array ref to: C<[ tIC, short description, long description, [ categories ], uri, ordinal number ]>.
 Returns C<undef> if couldn't fetch the URI.
 
-Short and long description are returned as provided by Yandex, in UTF8 encoding.
-
-Catalogs is an array of strings in format similar to "C<Auto & Moto / Motorcycles / Yamaha>". The leading "C<Catalog / >" is striped, I don't believe there're any sites in root of the Catalog.
-
-C<uri> is returned as stored in the Catalog, which can be defferent from the input URI. For example, with/without C<www> prefix, or even completely different address (C<www.narod.ru -E<gt> narod.yandex.ru>).
-
-The listing number in the main catogory. Note, that only order in the main catogory is available. For any additional categories this information is currently not provided.
 
 =over 1
 
 =item B<tIC>
 
-C<undef> - if there was an error getting or parsing data.
-Numeric string with tIC value otherwise. This value (zero or greater, with 10 points step) is always returned. tIC value of zero indicates that eihter site's tIC value is really very low (under 10), or that such site does not exist.
+C<undef> - if there was an error getting or parsing data. Numeric string with tIC value otherwise.
+
+This value (zero or greater, with 10 points step) is always returned. tIC value of zero indicates that eihter site's tIC value is really very low (under 10), or that such site does not exist.
 
 =item B<Short Description>
 
@@ -275,17 +272,27 @@ Can be C<undef> when site is present in the Catalog -- not all sites in the cata
 
 =item B<Categories>
 
-Empty list is returned when site is not present in Catalog. At least one entry when present in the catalog.
+Empty list is returned when site is not present in Catalog. At least one entry when site is present in the catalog.
+
+Strings in the array are formatted similar to "C<Auto & Moto / Motorcycles / Yamaha>". The leading "C<Catalog / >" is striped - there are no websites in root of the Catalog.
+
+B<Note:> with recent change Yandex Catalog does not provide all catogories a website is featured in anymore; only main category is available (though site can still be featured in several categories).
 
 =item B<URI>
 
-Address as stored in the Catalog (see notes above).
+Address as stored in the Catalog.
+
+C<uri> stored in the Catalog can be defferent from the input URI. For example, with/without C<www> prefix, or even completely different address (C<www.narod.ru -E<gt> narod.yandex.ru>). IDNs are stored in punycode in the Catalog, they can be converted to UTF8 using C<uri_utf8()> convenience method if optional module C<URI::UTF8::Punycode> is installed.
+
 
 =item B<Ordinal number>
+
+The listing number (ranking) in the main category (index C<0> of the C<categories> array).
 
 Returned only when site is present in catalog; C<undef> otherwise.
 
 =back
+
 
 
 =head1 CONVENIENCE METHODS
@@ -313,10 +320,16 @@ Self explanatory. This comment is here to shut the podchecker up.
 
 =head2 $site-E<gt>categories
 
+=for comment
+Self explanatory. This comment is here to shut the podchecker up.
+
+=head2 $site-E<gt>order_number
+
     print $site->tic . "\n";
     if( $site->is_in_catalog ) {
         print $site->short_description . "\n";
         print $site->long_description . "\n";
+        print "[". $site->order_number ."] ". ( shift @{$site->categories} ) ."\n";
         print "$_\n" foreach @{$site->categories};
     }
 
@@ -325,27 +338,30 @@ Self explanatory. This comment is here to shut the podchecker up.
 =for comment
 Self explanatory. This comment is here to shut the podchecker up.
 
-=head2 $site-E<gt>order_number
+=head2 $site-E<gt>uri_utf8
 
-=for comment
-Self explanatory. This comment is here to shut the podchecker up.
+Returns URI in UTF8, instead of punycode.
+This method requires optional URI::UTF8::Punycode.
+
 
 
 =head1 AUTHOR
 
-Irakliy Sunguryan, L<http://www.slovnik.org/>
+Irakliy Sunguryan, L<slovnik.org|http://www.slovnik.org/>
 
 
-=head1 DEVELOPMENT & BUGS
+
+=head1 DEVELOPMENT & ISSUES
 
 Repository: L<https://github.com/OpossumPetya/WWW-Yandex-Catalog-LookupSite>.
 
 Please report any bugs at L<GitHub|https://github.com/OpossumPetya/WWW-Yandex-Catalog-LookupSite/issues>, L<RT|http://rt.cpan.org/NoAuth/ReportBug.html?Queue=WWW-Yandex-Catalog-LookupSite>, or via email C<bug-www-yandex-catalog-lookupsite at rt.cpan.org>.
 
 
+
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2010-2012 Irakliy Sunguryan.
+Copyright 2010-2014 Irakliy Sunguryan.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
