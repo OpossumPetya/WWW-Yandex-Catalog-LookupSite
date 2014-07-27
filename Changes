@@ -1,5 +1,8 @@
 Revision history for WWW-Yandex-Catalog-LookupSite
 
+0.11  July 27, 2014
+    - Renamed punycode_utf8() to _punycode_utf8() to fix failing POD coverage test.
+
 0.10  July 27, 2014
     - Change: This module now uses LWP::UserAgent, instead of LWP::Simple
     - Changed 'search.yaca.yandex.ru/yca/cy/ch/' to 'yaca.yandex.ru/yca/cy/ch/' 

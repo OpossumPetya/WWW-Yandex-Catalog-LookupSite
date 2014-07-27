@@ -9,7 +9,7 @@ use strict;
 use warnings;
 
 use vars qw($VERSION);
-$VERSION    = '0.10';
+$VERSION    = '0.11';
 
 use LWP::UserAgent;
 
@@ -123,7 +123,7 @@ sub yaca_lookup {
 
 # Converts punycode in a IDN URL to utf8.
 # Returns converted URL.
-sub punycode_utf8 {
+sub _punycode_utf8 {
     my $uri = shift;
     
     s/^\s+//, s/\s+$// for $uri; # trim $uri just in case
@@ -179,7 +179,7 @@ sub uri {
 
 sub uri_utf8 {
     my $self = shift;
-    return $HAS_PUNYMOD ? punycode_utf8( $self->{_uri} ) : $self->{_uri};
+    return $HAS_PUNYMOD ? _punycode_utf8( $self->{_uri} ) : $self->{_uri};
 }
 
 1;
